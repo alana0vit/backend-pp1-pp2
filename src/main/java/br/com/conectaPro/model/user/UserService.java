@@ -4,9 +4,11 @@ import br.com.conectaPro.api.user.UserRequest;
 import br.com.conectaPro.dto.CoordinatesDTO;
 import br.com.conectaPro.model.category.Category;
 import br.com.conectaPro.model.category.CategoryRepository;
+import br.com.conectaPro.util.AgeUtils;
 import br.com.conectaPro.util.GeoLocationService;
 import br.com.conectaPro.util.Util;
 import jakarta.transaction.Transactional;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
@@ -39,6 +41,7 @@ public class UserService {
 
   @Transactional
   public User save(UserRequest userRequest) {
+    validateAge(userRequest.getBirthDate());
     validateProfessionalCategories(userRequest.getUserType(), userRequest.getCategoriesIds());
 
     if (userRepository.findByEmail(userRequest.getEmail()).isPresent()) {
@@ -98,6 +101,14 @@ public class UserService {
     return userRepository.findAll();
   }
 
+  /** Cadastro e edição só aceitam quem tem 18 anos ou mais (data futura/hoje também é recusada). */
+  private void validateAge(LocalDate birthDate) {
+    if (birthDate != null && !AgeUtils.isMaiorDeIdade(birthDate, LocalDate.now())) {
+      throw new IllegalArgumentException(
+          "É necessário ter 18 anos ou mais para usar a plataforma.");
+    }
+  }
+
   public User getById(Long id) {
     return userRepository
         .findById(id)
@@ -113,6 +124,7 @@ public class UserService {
             .orElseThrow(
                 () -> new NoSuchElementException("Usuário não encontrado com o ID: " + id));
 
+    validateAge(userRequest.getBirthDate());
     validateProfessionalCategories(userRequest.getUserType(), userRequest.getCategoriesIds());
 
     user.setName(userRequest.getName());

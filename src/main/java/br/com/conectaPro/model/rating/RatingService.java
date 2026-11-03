@@ -3,11 +3,14 @@ package br.com.conectaPro.model.rating;
 import br.com.conectaPro.dto.FinishRatingDTO;
 import br.com.conectaPro.model.user.User;
 import br.com.conectaPro.model.user.UserRepository;
+import br.com.conectaPro.util.Util;
 import jakarta.transaction.Transactional;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class RatingService {
@@ -55,6 +58,65 @@ public class RatingService {
       throw new IllegalStateException("Essa avaliação não pertence ao usuário informado");
     }
     return rating;
+  }
+
+  public static final int MAX_FOTOS = 3;
+  private static final long MAX_TAMANHO_FOTO = 5L * 1024 * 1024;
+
+  /**
+   * Anexa fotos a uma avaliação. Só quem escreveu a avaliação pode anexar, até {@value #MAX_FOTOS}
+   * fotos no total, só imagens de até 5 MB cada.
+   */
+  @Transactional
+  public Rating addImages(Long ratingId, Long userId, List<MultipartFile> arquivos) {
+    Rating rating =
+        repository
+            .findById(ratingId)
+            .orElseThrow(() -> new NoSuchElementException("Avaliação não encontrada."));
+
+    // Mesma resposta para "não existe" e "não é sua": não revela avaliações de outras pessoas.
+    if (rating.getEvaluatingPerson() == null
+        || !rating.getEvaluatingPerson().getId().equals(userId)) {
+      throw new NoSuchElementException("Avaliação não encontrada.");
+    }
+    if (rating.getStatus() == EvaluateStatus.REJEITADO) {
+      throw new IllegalStateException("Esta avaliação foi descartada.");
+    }
+
+    List<MultipartFile> validos = new ArrayList<>();
+    for (MultipartFile arquivo : arquivos == null ? List.<MultipartFile>of() : arquivos) {
+      if (arquivo == null || arquivo.isEmpty()) {
+        continue;
+      }
+      String tipo = arquivo.getContentType();
+      if (tipo == null || !tipo.startsWith("image/")) {
+        throw new IllegalArgumentException("Só são aceitas imagens (JPG, PNG, WEBP...).");
+      }
+      if (arquivo.getSize() > MAX_TAMANHO_FOTO) {
+        throw new IllegalArgumentException("Cada foto pode ter no máximo 5 MB.");
+      }
+      validos.add(arquivo);
+    }
+    if (validos.isEmpty()) {
+      throw new IllegalArgumentException("Nenhuma imagem enviada.");
+    }
+
+    List<String> atuais =
+        rating.getImgUrl() == null ? new ArrayList<>() : new ArrayList<>(rating.getImgUrl());
+    if (atuais.size() + validos.size() > MAX_FOTOS) {
+      throw new IllegalStateException(
+          "Uma avaliação pode ter no máximo " + MAX_FOTOS + " fotos.");
+    }
+
+    for (MultipartFile arquivo : validos) {
+      String nome = Util.fazerUploadImagem(arquivo);
+      if (nome == null) {
+        throw new IllegalStateException("Não foi possível salvar a imagem. Tente novamente.");
+      }
+      atuais.add(nome);
+    }
+    rating.setImgUrl(atuais);
+    return repository.save(rating);
   }
 
   @Transactional

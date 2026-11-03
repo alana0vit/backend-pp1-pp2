@@ -8,6 +8,7 @@ import br.com.conectaPro.model.subscription.Subscription;
 import br.com.conectaPro.model.subscription.SubscriptionPlan;
 import br.com.conectaPro.model.subscription.SubscriptionService;
 import br.com.conectaPro.model.subscription.SubscriptionStatus;
+import br.com.conectaPro.security.EmailService;
 import jakarta.transaction.Transactional;
 import java.time.LocalDateTime;
 import java.util.NoSuchElementException;
@@ -26,6 +27,8 @@ public class PaymentService {
   @Autowired private SubscriptionService subscriptionService;
 
   @Autowired private PaymentGateway paymentGateway;
+
+  @Autowired private EmailService emailService;
 
   @Value("${payment.platform.fee.percentage}")
   private Double defaultPlatformFeePercentage;
@@ -145,7 +148,16 @@ public class PaymentService {
 
     payment.setStatus(PaymentStatus.RECUSADO);
     // A demanda/assinatura permanece pendente; dá pra gerar uma nova cobrança.
-    return repository.save(payment);
+    Payment saved = repository.save(payment);
+
+    if (payment.getType() == PaymentType.DEMANDA && payment.getDemand() != null) {
+      try {
+        emailService.notificarPagamentoRecusado(payment.getDemand());
+      } catch (Exception e) {
+        System.err.println("Erro ao notificar pagamento recusado: " + e.getMessage());
+      }
+    }
+    return saved;
   }
 
   private double arredondar(double valor) {

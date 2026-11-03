@@ -45,6 +45,8 @@ public class SecurityConfig {
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/subscriptions/plans")
                     .permitAll()
+                    .requestMatchers(HttpMethod.POST, "/api/chat")
+                    .permitAll() // chatbot público (protegido por limite de uso por IP)
                     .requestMatchers(HttpMethod.GET, "/api/images/**")
                     .permitAll() // servir imagens (foto do usuário / imagens da demanda)
                     .requestMatchers(

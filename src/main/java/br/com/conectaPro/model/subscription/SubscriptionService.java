@@ -3,6 +3,7 @@ package br.com.conectaPro.model.subscription;
 import br.com.conectaPro.model.user.User;
 import br.com.conectaPro.model.user.UserRepository;
 import br.com.conectaPro.model.user.UserType;
+import br.com.conectaPro.security.EmailService;
 import jakarta.transaction.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,6 +20,8 @@ public class SubscriptionService {
   @Autowired private SubscriptionPlanRepository planRepository;
 
   @Autowired private UserRepository userRepository;
+
+  @Autowired private EmailService emailService;
 
   public List<SubscriptionPlan> listarPlanos() {
     return planRepository.findAll();
@@ -84,6 +87,12 @@ public class SubscriptionService {
     professional.setActivePlanName(plan.getName());
     userRepository.save(professional);
 
+    try {
+      emailService.notificarAssinaturaAtivada(saved);
+    } catch (Exception e) {
+      System.err.println("Erro ao notificar assinatura ativada: " + e.getMessage());
+    }
+
     return saved;
   }
 
@@ -116,6 +125,12 @@ public class SubscriptionService {
       subscription.setStatus(SubscriptionStatus.EXPIRADA);
       repository.save(subscription);
       rebaixarProfissional(subscription.getProfessional());
+
+      try {
+        emailService.notificarAssinaturaExpirada(subscription);
+      } catch (Exception e) {
+        System.err.println("Erro ao notificar assinatura expirada: " + e.getMessage());
+      }
     }
   }
 

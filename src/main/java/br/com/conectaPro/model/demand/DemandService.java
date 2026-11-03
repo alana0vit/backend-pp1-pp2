@@ -198,8 +198,9 @@ public class DemandService {
 
     try {
       emailService.notificarDemandaAceita(saved);
+      emailService.notificarPagamentoAprovadoProfissional(saved);
     } catch (Exception e) {
-      System.err.println("Erro ao notificar demanda aceita (pós-pagamento): " + e.getMessage());
+      System.err.println("Erro ao notificar pagamento aprovado: " + e.getMessage());
     }
 
     return saved;

@@ -2,11 +2,13 @@ package br.com.conectaPro.api.payment;
 
 import br.com.conectaPro.model.payment.Payment;
 import br.com.conectaPro.model.payment.PaymentService;
+import br.com.conectaPro.model.payment.PaymentType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +31,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class PaymentController {
 
   @Autowired private PaymentService paymentService;
+
+  /** URL do site (front): para onde o checkout simulado devolve o usuário. */
+  @Value("${app.frontend.url:http://localhost:5173}")
+  private String frontendUrl;
 
   @Operation(summary = "Gera uma cobrança para a demanda (deve estar AGUARDANDO_PAGAMENTO)")
   @PostMapping("/demand/{demandId}/checkout")
@@ -72,42 +78,75 @@ public class PaymentController {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Pagamento não encontrado.");
     }
 
+    // Depois de aprovar/recusar, o usuário volta para o site (na mesma aba), no painel certo.
+    boolean assinatura = payment.getType() == PaymentType.ASSINATURA;
+    String painel = assinatura ? "/dashboard-profissional" : "/dashboard-cliente";
+    String tipo = assinatura ? "assinatura" : "demanda";
+    String site =
+        frontendUrl.endsWith("/")
+            ? frontendUrl.substring(0, frontendUrl.length() - 1)
+            : frontendUrl;
+    String voltar = site + painel;
+    String retorno = voltar + "?tipo=" + tipo + "&pagamento=";
+
     String html =
         """
         <!DOCTYPE html>
         <html lang="pt-br">
         <head>
           <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>Checkout simulado - ConectaPro</title>
           <style>
-            body { font-family: sans-serif; max-width: 420px; margin: 60px auto; text-align: center; }
+            body { font-family: sans-serif; max-width: 420px; margin: 60px auto; padding: 0 16px; text-align: center; }
             .badge { background: #fef3c7; color: #92400e; padding: 4px 10px; border-radius: 6px; font-size: 12px; }
             .valor { font-size: 32px; font-weight: bold; margin: 20px 0; }
             button { padding: 12px 20px; margin: 8px; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+            button:disabled { opacity: .6; cursor: default; }
             .aprovar { background: #16a34a; color: white; }
             .recusar { background: #dc2626; color: white; }
+            .voltar { display: inline-block; margin-top: 18px; color: #475569; font-size: 14px; }
           </style>
         </head>
         <body>
           <span class="badge">MODO SIMULADO — nenhum dinheiro real será cobrado</span>
-          <h2>Pagamento #%d</h2>
-          <div class="valor">R$ %.2f</div>
-          <p>Status atual: <strong>%s</strong></p>
+          <h2>Pagamento #__ID__</h2>
+          <div class="valor">R$ __VALOR__</div>
+          <p>Status atual: <strong>__STATUS__</strong></p>
           <button class="aprovar" onclick="enviar('aprovar')">Aprovar pagamento</button>
           <button class="recusar" onclick="enviar('recusar')">Recusar pagamento</button>
           <p id="resultado"></p>
+          <a class="voltar" href="__VOLTAR__">&larr; Voltar sem pagar</a>
           <script>
             async function enviar(acao) {
-              const resp = await fetch(`/api/payments/%d/${acao}`, { method: 'POST' });
-              const texto = await resp.text();
-              document.getElementById('resultado').innerText =
-                resp.ok ? 'Feito! Pode fechar esta janela.' : ('Erro: ' + texto);
+              document.querySelectorAll('button').forEach(b => b.disabled = true);
+              const resultado = document.getElementById('resultado');
+              try {
+                const resp = await fetch('/api/payments/__ID__/' + acao, { method: 'POST' });
+                if (resp.ok) {
+                  resultado.innerText = acao === 'aprovar'
+                    ? 'Pagamento aprovado! Voltando para o site...'
+                    : 'Pagamento recusado. Voltando para o site...';
+                  const status = acao === 'aprovar' ? 'aprovado' : 'recusado';
+                  setTimeout(() => { window.location.href = '__RETORNO__' + status; }, 1200);
+                } else {
+                  resultado.innerText = 'Erro: ' + (await resp.text());
+                  document.querySelectorAll('button').forEach(b => b.disabled = false);
+                }
+              } catch (e) {
+                resultado.innerText = 'Erro de conexão. Tente novamente.';
+                document.querySelectorAll('button').forEach(b => b.disabled = false);
+              }
             }
           </script>
         </body>
         </html>
         """
-            .formatted(payment.getId(), payment.getAmount(), payment.getStatus(), payment.getId());
+            .replace("__ID__", String.valueOf(payment.getId()))
+            .replace("__VALOR__", "%.2f".formatted(payment.getAmount()))
+            .replace("__STATUS__", String.valueOf(payment.getStatus()))
+            .replace("__VOLTAR__", voltar)
+            .replace("__RETORNO__", retorno);
 
     return ResponseEntity.ok(html);
   }

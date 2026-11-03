@@ -11,6 +11,7 @@ import br.com.conectaPro.security.EmailService;
 import br.com.conectaPro.security.JwtService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -54,24 +55,26 @@ public class AuthController {
 
   @Operation(summary = "Solicita recuperação de senha")
   @PostMapping("/forgot-password")
-  public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordDTO request) {
+  public ResponseEntity<?> forgotPassword(@Valid @RequestBody ForgotPasswordDTO request) {
+    // A resposta é sempre a mesma, exista o e-mail ou não: assim ninguém consegue descobrir quais
+    // e-mails estão cadastrados (enumeração de usuários).
     Optional<User> userOpt = userRepository.findByEmail(request.email());
-    if (userOpt.isEmpty()) {
-      return ResponseEntity.badRequest().body("Usuário não encontrado.");
+    if (userOpt.isPresent()) {
+      User user = userOpt.get();
+      String token = UUID.randomUUID().toString();
+      user.setRecoveryToken(token);
+      user.setRecoveryTokenExpiration(LocalDateTime.now().plusMinutes(30));
+      userRepository.save(user);
+      emailService.sendRecoveryEmail(user.getEmail(), token);
     }
-    User user = userOpt.get();
-    String token = UUID.randomUUID().toString();
-    user.setRecoveryToken(token);
-    user.setRecoveryTokenExpiration(LocalDateTime.now().plusMinutes(30));
-    userRepository.save(user);
-    emailService.sendRecoveryEmail(user.getEmail(), token);
 
-    return ResponseEntity.ok("E-mail de recuperação enviado.");
+    return ResponseEntity.ok(
+        "Se o e-mail estiver cadastrado, enviaremos um link para redefinir a senha.");
   }
 
   @Operation(summary = "Redefine a senha")
   @PostMapping("/reset-password")
-  public ResponseEntity<?> resetPassword(@RequestBody ResetPasswordDTO request) {
+  public ResponseEntity<?> resetPassword(@Valid @RequestBody ResetPasswordDTO request) {
     Optional<User> userOpt = userRepository.findByRecoveryToken(request.token());
     if (userOpt.isEmpty()) {
       return ResponseEntity.badRequest().body("Token inválido.");
@@ -86,6 +89,10 @@ public class AuthController {
     user.setRecoveryToken(null);
     user.setRecoveryTokenExpiration(null);
     userRepository.save(user);
+
+    // E-mail de segurança: avisa o dono da conta que a senha mudou.
+    emailService.sendPasswordChangedEmail(user.getEmail(), user.getName());
+
     return ResponseEntity.ok("Senha alterada com sucesso.");
   }
 }
