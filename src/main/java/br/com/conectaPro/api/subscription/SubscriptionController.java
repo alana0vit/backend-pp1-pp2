@@ -62,6 +62,27 @@ public class SubscriptionController {
     }
   }
 
+  @Operation(
+      summary = "Plano atual do profissional",
+      description =
+          "200 com {subscriptionId, planId, planName, status, startedAt, expiresAt} ou 204.")
+  @GetMapping("/professional/{professionalId}/current")
+  public ResponseEntity<?> planoAtual(@PathVariable Long professionalId) {
+    return subscriptionService
+        .obterAssinaturaAtiva(professionalId)
+        .<ResponseEntity<?>>map(
+            s ->
+                ResponseEntity.ok(
+                    Map.of(
+                        "subscriptionId", s.getId(),
+                        "planId", s.getPlan().getId(),
+                        "planName", s.getPlan().getName(),
+                        "status", s.getStatus(),
+                        "startedAt", String.valueOf(s.getStartedAt()),
+                        "expiresAt", String.valueOf(s.getExpiresAt()))))
+        .orElseGet(() -> ResponseEntity.noContent().build());
+  }
+
   @Operation(summary = "Cancela uma assinatura ativa")
   @PostMapping("/{subscriptionId}/cancelar")
   public ResponseEntity<?> cancelar(@PathVariable Long subscriptionId) {

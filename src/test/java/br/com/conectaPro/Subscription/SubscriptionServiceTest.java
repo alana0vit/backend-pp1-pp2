@@ -57,6 +57,32 @@ class SubscriptionServiceTest {
   }
 
   @Test
+  @DisplayName("Não deve permitir recomprar o mesmo plano ainda ativo")
+  void erroAoRecomprarMesmoPlanoAtivo() {
+    User professional = new User();
+    professional.setId(1L);
+    professional.setUserType(UserType.PROFESSIONAL);
+
+    SubscriptionPlan plano = SubscriptionPlan.builder().name("Ouro").build();
+    plano.setId(2L);
+
+    Subscription ativa =
+        Subscription.builder()
+            .plan(plano)
+            .status(SubscriptionStatus.ATIVA)
+            .expiresAt(LocalDateTime.now().plusDays(10))
+            .build();
+
+    when(userRepository.findById(1L)).thenReturn(Optional.of(professional));
+    when(planRepository.findById(2L)).thenReturn(Optional.of(plano));
+    when(repository.findFirstByProfessionalIdAndStatusOrderByExpiresAtDesc(
+            1L, SubscriptionStatus.ATIVA))
+        .thenReturn(Optional.of(ativa));
+
+    assertThrows(IllegalStateException.class, () -> subscriptionService.iniciarAssinatura(1L, 2L));
+  }
+
+  @Test
   @DisplayName("Não deve permitir cliente assinar um plano")
   void erroAoClienteTentarAssinar() {
     Long professionalId = 1L;

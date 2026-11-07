@@ -47,6 +47,19 @@ public class SubscriptionService {
             .findById(planId)
             .orElseThrow(() -> new NoSuchElementException("Plano não encontrado."));
 
+    // Impede recomprar o mesmo plano enquanto ele ainda está vigente.
+    obterAssinaturaAtiva(professionalId)
+        .filter(ativa -> ativa.getPlan().getId().equals(plan.getId()))
+        .ifPresent(
+            ativa -> {
+              throw new IllegalStateException(
+                  "Você já possui o plano "
+                      + plan.getName()
+                      + " ativo até "
+                      + ativa.getExpiresAt().toLocalDate()
+                      + ".");
+            });
+
     Subscription subscription =
         Subscription.builder()
             .professional(professional)
@@ -56,6 +69,12 @@ public class SubscriptionService {
     subscription.setEnabled(Boolean.TRUE);
 
     return repository.save(subscription);
+  }
+
+  /** Assinatura ATIVA vigente do profissional, se houver. */
+  public java.util.Optional<Subscription> obterAssinaturaAtiva(@NonNull Long professionalId) {
+    return repository.findFirstByProfessionalIdAndStatusOrderByExpiresAtDesc(
+        professionalId, SubscriptionStatus.ATIVA);
   }
 
   /**
