@@ -104,8 +104,7 @@ public class RatingService {
     List<String> atuais =
         rating.getImgUrl() == null ? new ArrayList<>() : new ArrayList<>(rating.getImgUrl());
     if (atuais.size() + validos.size() > MAX_FOTOS) {
-      throw new IllegalStateException(
-          "Uma avaliação pode ter no máximo " + MAX_FOTOS + " fotos.");
+      throw new IllegalStateException("Uma avaliação pode ter no máximo " + MAX_FOTOS + " fotos.");
     }
 
     for (MultipartFile arquivo : validos) {

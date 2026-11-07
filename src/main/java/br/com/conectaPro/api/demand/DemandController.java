@@ -161,8 +161,14 @@ public class DemandController {
   public ResponseEntity<DemandResponseDTO> reassignProfessional(
       @PathVariable @NonNull Long id, @RequestBody ReassignRequestDTO request) {
 
-    Demand updatedDemand = demandService.reassign(id, request.professionalId());
-    return ResponseEntity.ok(DemandResponseDTO.fromEntity(updatedDemand));
+    try {
+      Demand updatedDemand = demandService.reassign(id, request.professionalId());
+      return ResponseEntity.ok(DemandResponseDTO.fromEntity(updatedDemand));
+    } catch (NoSuchElementException e) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null);
+    } catch (IllegalStateException e) {
+      return ResponseEntity.status(HttpStatus.CONFLICT).body(null);
+    }
   }
 
   @Operation(summary = "Profissional aceita a demanda e define o valor final do serviço")

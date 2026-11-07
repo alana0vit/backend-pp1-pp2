@@ -17,8 +17,7 @@ import org.springframework.web.util.HtmlUtils;
 /**
  * Envio de e-mails. O texto é montado na thread da requisição (que ainda tem acesso às entidades
  * JPA), mas o envio SMTP acontece em segundo plano: assim aceitar/recusar/pagar não fica esperando
- * o servidor de e-mail responder. Falhas são registradas no log e nunca derrubam o fluxo
- * principal.
+ * o servidor de e-mail responder. Falhas são registradas no log e nunca derrubam o fluxo principal.
  */
 @Service
 @RequiredArgsConstructor
@@ -303,10 +302,7 @@ public class EmailService {
         <p>Para recuperá-los, assine novamente em <a href="%s/planos">%s/planos</a>.</p>
         """
             .formatted(
-                esc(subscription.getProfessional().getName()),
-                esc(plano),
-                siteUrl(),
-                siteUrl());
+                esc(subscription.getProfessional().getName()), esc(plano), siteUrl(), siteUrl());
     enviar(
         subscription.getProfessional().getEmail(),
         "Seu plano %s expirou - ConectaPro".formatted(plano),
