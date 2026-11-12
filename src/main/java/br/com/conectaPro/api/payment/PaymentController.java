@@ -1,8 +1,12 @@
 package br.com.conectaPro.api.payment;
 
+import br.com.conectaPro.dto.PaymentResponseDTO;
+import br.com.conectaPro.model.demand.DemandService;
 import br.com.conectaPro.model.payment.Payment;
 import br.com.conectaPro.model.payment.PaymentService;
 import br.com.conectaPro.model.payment.PaymentType;
+import br.com.conectaPro.security.CustomUserDetails;
+import br.com.conectaPro.util.Authz;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Map;
@@ -12,6 +16,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,20 +37,26 @@ public class PaymentController {
 
   @Autowired private PaymentService paymentService;
 
+  @Autowired private DemandService demandService;
+
   /** URL do site (front): para onde o checkout simulado devolve o usuário. */
   @Value("${app.frontend.url:http://localhost:5173}")
   private String frontendUrl;
 
   @Operation(summary = "Gera uma cobrança para a demanda (deve estar AGUARDANDO_PAGAMENTO)")
   @PostMapping("/demand/{demandId}/checkout")
-  public ResponseEntity<?> criarCheckoutDemanda(@PathVariable Long demandId) {
+  public ResponseEntity<?> criarCheckoutDemanda(
+      @PathVariable Long demandId, @AuthenticationPrincipal CustomUserDetails principal) {
     try {
+      // só o cliente da demanda paga por ela (404 para os demais)
+      demandService.getByIdForOwner(demandId, Authz.userId(principal));
+
       Payment payment = paymentService.criarCheckoutDemanda(demandId);
       String checkoutUrl = paymentService.getCheckoutUrl(payment);
 
       return ResponseEntity.ok(
           Map.of(
-              "payment", payment,
+              "payment", PaymentResponseDTO.fromEntity(payment),
               "checkoutUrl", checkoutUrl));
     } catch (NoSuchElementException e) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
@@ -56,9 +67,17 @@ public class PaymentController {
 
   @Operation(summary = "Consulta um pagamento")
   @GetMapping("/{id}")
-  public ResponseEntity<?> getById(@PathVariable Long id) {
+  public ResponseEntity<?> getById(
+      @PathVariable Long id, @AuthenticationPrincipal CustomUserDetails principal) {
     try {
-      return ResponseEntity.ok(paymentService.getById(id));
+      Payment payment = paymentService.getById(id);
+      // só quem participa da cobrança a consulta (404 para os demais)
+      if (payment.getDemand() != null) {
+        demandService.getByIdForUser(payment.getDemand().getId(), Authz.userId(principal));
+      } else if (payment.getSubscription() != null) {
+        Authz.requireSelf(payment.getSubscription().getProfessional().getId(), principal);
+      }
+      return ResponseEntity.ok(PaymentResponseDTO.fromEntity(payment));
     } catch (NoSuchElementException e) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
     }
@@ -155,7 +174,7 @@ public class PaymentController {
   @PostMapping("/{id}/aprovar")
   public ResponseEntity<?> aprovar(@PathVariable Long id) {
     try {
-      return ResponseEntity.ok(paymentService.aprovar(id));
+      return ResponseEntity.ok(PaymentResponseDTO.fromEntity(paymentService.aprovar(id)));
     } catch (NoSuchElementException e) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
     } catch (IllegalStateException e) {
@@ -167,7 +186,7 @@ public class PaymentController {
   @PostMapping("/{id}/recusar")
   public ResponseEntity<?> recusar(@PathVariable Long id) {
     try {
-      return ResponseEntity.ok(paymentService.recusar(id));
+      return ResponseEntity.ok(PaymentResponseDTO.fromEntity(paymentService.recusar(id)));
     } catch (NoSuchElementException e) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
     } catch (IllegalStateException e) {

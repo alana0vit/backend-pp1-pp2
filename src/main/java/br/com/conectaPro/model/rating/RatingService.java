@@ -104,7 +104,8 @@ public class RatingService {
     List<String> atuais =
         rating.getImgUrl() == null ? new ArrayList<>() : new ArrayList<>(rating.getImgUrl());
     if (atuais.size() + validos.size() > MAX_FOTOS) {
-      throw new IllegalStateException("Uma avaliação pode ter no máximo " + MAX_FOTOS + " fotos.");
+      throw new IllegalStateException(
+          "Uma avaliação pode ter no máximo " + MAX_FOTOS + " fotos.");
     }
 
     for (MultipartFile arquivo : validos) {
@@ -116,6 +117,21 @@ public class RatingService {
     }
     rating.setImgUrl(atuais);
     return repository.save(rating);
+  }
+
+  /** Só o avaliador (autor) preenche a própria avaliação. Outros: 404. */
+  @Transactional
+  public void finishForUser(Long id, Long userId, FinishRatingDTO request) {
+    Rating rating =
+        repository
+            .findById(id)
+            .orElseThrow(() -> new NoSuchElementException("Avaliação não encontrada."));
+    if (userId == null
+        || rating.getEvaluatingPerson() == null
+        || !userId.equals(rating.getEvaluatingPerson().getId())) {
+      throw new NoSuchElementException("Avaliação não encontrada.");
+    }
+    finish(id, request);
   }
 
   @Transactional

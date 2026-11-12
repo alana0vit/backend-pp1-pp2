@@ -1,7 +1,10 @@
 package br.com.conectaPro.security;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -29,6 +32,17 @@ public class SecurityConfig {
   private final CustomUserDetailsService userDetailsService;
   private final JwtAuthenticationFilter jwtAuthFilter;
 
+  @Value("${app.frontend.url:http://localhost:5173}")
+  private String frontendUrl;
+
+  /** Origens extras (separadas por vírgula), ex.: um domínio de homologação. */
+  @Value("${app.cors.allowed-origins:}")
+  private String extraOrigins;
+
+  /** Libera http://localhost:* e http://127.0.0.1:* (desenvolvimento). Desligar em produção. */
+  @Value("${app.cors.allow-localhost:true}")
+  private boolean allowLocalhost;
+
   @Bean
   public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
     http.csrf(AbstractHttpConfigurer::disable)
@@ -41,6 +55,8 @@ public class SecurityConfig {
                     .permitAll()
                     .requestMatchers("/api/user")
                     .permitAll() // POST criar usuário
+                    .requestMatchers("/ws/**")
+                    .permitAll() // handshake do WebSocket; o JWT é validado no frame STOMP CONNECT
                     .requestMatchers(HttpMethod.GET, "/api/category", "/api/category/**")
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/subscriptions/plans")
@@ -77,7 +93,17 @@ public class SecurityConfig {
   @Bean
   public CorsConfigurationSource corsConfigurationSource() {
     CorsConfiguration configuration = new CorsConfiguration();
-    configuration.setAllowedOriginPatterns(Arrays.asList("*"));
+    List<String> origins = new ArrayList<>();
+    origins.add(frontendUrl.endsWith("/") ? frontendUrl.substring(0, frontendUrl.length() - 1) : frontendUrl);
+    Arrays.stream(extraOrigins.split(","))
+        .map(String::trim)
+        .filter(o -> !o.isEmpty())
+        .forEach(origins::add);
+    if (allowLocalhost) {
+      origins.add("http://localhost:*");
+      origins.add("http://127.0.0.1:*");
+    }
+    configuration.setAllowedOriginPatterns(origins);
     configuration.setAllowedMethods(
         Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
     configuration.setAllowedHeaders(Arrays.asList("*"));
