@@ -98,6 +98,14 @@ class DemandOwnershipTest {
   }
 
   @Test
+  @DisplayName("Só o profissional da demanda aceita/recusa/finaliza (404 para os demais)")
+  void soProfissionalAge() {
+    assertEquals(10L, demandService.getByIdForProfessional(10L, 2L).getId());
+    assertThrows(NoSuchElementException.class, () -> demandService.getByIdForProfessional(10L, 1L));
+    assertThrows(NoSuchElementException.class, () -> demandService.getByIdForProfessional(10L, 99L));
+  }
+
+  @Test
   @DisplayName("Respeita o teto de fotos por demanda")
   void respeitaTeto() {
     assertThrows(

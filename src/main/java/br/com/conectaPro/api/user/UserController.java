@@ -8,6 +8,7 @@ import br.com.conectaPro.model.user.User;
 import br.com.conectaPro.model.user.UserService;
 import br.com.conectaPro.model.user.UserType;
 import br.com.conectaPro.security.CustomUserDetails;
+import br.com.conectaPro.util.Authz;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -75,7 +76,10 @@ public class UserController {
   @Operation(summary = "Atualiza um usuario pelo seu ID")
   @PutMapping("/{id}")
   public ResponseEntity<User> update(
-      @PathVariable("id") Long id, @RequestBody UserRequest request) {
+      @PathVariable("id") Long id,
+      @RequestBody UserRequest request,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    Authz.requireSelf(id, principal);
 
     userService.update(id, request);
     return ResponseEntity.ok().build();
@@ -83,7 +87,9 @@ public class UserController {
 
   @Operation(summary = "Deleta um usuario pelo seu ID")
   @DeleteMapping("/{id}")
-  public ResponseEntity<Void> delete(@PathVariable Long id) {
+  public ResponseEntity<Void> delete(
+      @PathVariable Long id, @AuthenticationPrincipal CustomUserDetails principal) {
+    Authz.requireSelf(id, principal);
 
     userService.delete(id);
     return ResponseEntity.ok().build();
@@ -92,7 +98,10 @@ public class UserController {
   @Operation(summary = "Envia/atualiza a foto de um usuario")
   @PostMapping(value = "/{id}/photo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public ResponseEntity<UserResponseDTO> updatePhoto(
-      @PathVariable Long id, @RequestParam("foto") MultipartFile foto) {
+      @PathVariable Long id,
+      @RequestParam("foto") MultipartFile foto,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    Authz.requireSelf(id, principal);
 
     if (foto == null || foto.isEmpty()) {
       throw new IllegalArgumentException("Arquivo de imagem vazio ou não enviado (campo 'foto').");
@@ -104,7 +113,9 @@ public class UserController {
 
   @Operation(summary = "Remove a foto de um usuario")
   @DeleteMapping("/{id}/photo")
-  public ResponseEntity<UserResponseDTO> deletePhoto(@PathVariable Long id) {
+  public ResponseEntity<UserResponseDTO> deletePhoto(
+      @PathVariable Long id, @AuthenticationPrincipal CustomUserDetails principal) {
+    Authz.requireSelf(id, principal);
     User user = userService.deletePhoto(id);
     return ResponseEntity.ok(UserResponseDTO.fromEntity(user));
   }
@@ -141,22 +152,35 @@ public class UserController {
 
   // Endereços
 
+  /** Endereço só para o dono (404 para os demais). */
+  private AddressUser ownedAddress(Long addressId, CustomUserDetails principal) {
+    AddressUser address = userService.getAddressById(addressId);
+    Authz.requireSelf(address.getUserId() == null ? null : address.getUserId().getId(), principal);
+    return address;
+  }
+
   @Operation(summary = "Lista todos os endereços de um usuario")
   @GetMapping("/{userId}/addresses")
-  public List<AddressUser> getAllAddresses(@PathVariable Long userId) {
+  public List<AddressUser> getAllAddresses(
+      @PathVariable Long userId, @AuthenticationPrincipal CustomUserDetails principal) {
+    Authz.requireSelf(userId, principal);
     return userService.getAllAddressByUser(userId);
   }
 
   @Operation(summary = "Lista um endereço especifico")
   @GetMapping("/addresses/{addressId}")
-  public AddressUser getAddressById(@PathVariable Long addressId) {
-    return userService.getAddressById(addressId);
+  public AddressUser getAddressById(
+      @PathVariable Long addressId, @AuthenticationPrincipal CustomUserDetails principal) {
+    return ownedAddress(addressId, principal);
   }
 
   @Operation(summary = "Criar endereço para um usuario")
   @PostMapping("/{userId}/addresses")
   public ResponseEntity<AddressUser> postAddressUser(
-      @PathVariable("userId") Long userId, @RequestBody @Valid AddressUserRequest request) {
+      @PathVariable("userId") Long userId,
+      @RequestBody @Valid AddressUserRequest request,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    Authz.requireSelf(userId, principal);
 
     AddressUser address = userService.postAddressUser(userId, request.build());
     return new ResponseEntity<>(address, HttpStatus.CREATED);
@@ -165,7 +189,10 @@ public class UserController {
   @Operation(summary = "Atualiza um endereço pelo seu ID")
   @PutMapping("/address/{addressId}")
   public ResponseEntity<AddressUser> updateAddressUser(
-      @PathVariable("addressId") Long addressId, @RequestBody AddressUserRequest request) {
+      @PathVariable("addressId") Long addressId,
+      @RequestBody AddressUserRequest request,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    ownedAddress(addressId, principal);
 
     AddressUser address = userService.updateAddressUser(addressId, request.build());
     return new ResponseEntity<>(address, HttpStatus.OK);
@@ -173,7 +200,10 @@ public class UserController {
 
   @Operation(summary = "Deleta um endereço pelo seu ID")
   @DeleteMapping("/address/{addressId}")
-  public ResponseEntity<Void> deleteAddressUser(@PathVariable("addressId") Long addressId) {
+  public ResponseEntity<Void> deleteAddressUser(
+      @PathVariable("addressId") Long addressId,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    ownedAddress(addressId, principal);
 
     userService.deleteAddressUser(addressId);
     return ResponseEntity.noContent().build();

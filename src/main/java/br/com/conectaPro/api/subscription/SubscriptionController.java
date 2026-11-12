@@ -8,6 +8,7 @@ import br.com.conectaPro.model.subscription.SubscriptionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import br.com.conectaPro.security.CustomUserDetails;
+import br.com.conectaPro.util.Authz;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -46,7 +47,11 @@ public class SubscriptionController {
           "Cria a assinatura (PENDENTE) e já gera a cobrança, retornando o link de checkout — "
               + "mesmo fluxo usado para pagar uma demanda.")
   @PostMapping("/professional/{professionalId}/plan/{planId}/checkout")
-  public ResponseEntity<?> assinar(@PathVariable Long professionalId, @PathVariable Long planId) {
+  public ResponseEntity<?> assinar(
+      @PathVariable Long professionalId,
+      @PathVariable Long planId,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    Authz.requireSelf(professionalId, principal); // só contrata plano para si mesmo
     try {
       Subscription subscription = subscriptionService.iniciarAssinatura(professionalId, planId);
       Payment payment = paymentService.criarCheckoutAssinatura(subscription);

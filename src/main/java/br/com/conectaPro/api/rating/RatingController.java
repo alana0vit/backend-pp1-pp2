@@ -9,6 +9,7 @@ import br.com.conectaPro.model.rating.RatingService;
 import br.com.conectaPro.model.user.User;
 import br.com.conectaPro.model.user.UserService;
 import br.com.conectaPro.security.CustomUserDetails;
+import br.com.conectaPro.util.Authz;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -44,11 +45,17 @@ public class RatingController {
 
   @Operation(summary = "Criar entidade Avaliação")
   @PostMapping()
-  public ResponseEntity<?> save(@RequestBody @Valid RatingRequest request) {
+  public ResponseEntity<?> save(
+      @RequestBody @Valid RatingRequest request,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    // o avaliador é sempre o usuário logado
+    Authz.requireSelf(request.getEvaluatingPerson(), principal);
+
     try {
       User evaluator = userService.getById(request.getEvaluatingPerson());
       User evaluated = userService.getById(request.getPersonEvaluated());
-      Demand service = demandService.getById(request.getService());
+      // só quem participa da demanda avalia (404 para estranhos)
+      Demand service = demandService.getByIdForUser(request.getService(), principal.getUser().getId());
 
       Rating ratingNew = request.build();
       ratingNew.setService(service);
@@ -74,7 +81,9 @@ public class RatingController {
 
   @Operation(summary = "Lista todas as avaliações feitas por um usuario")
   @GetMapping("/user/{userId}/evaluator")
-  public List<Rating> getByEvaluator(@PathVariable Long userId) {
+  public List<Rating> getByEvaluator(
+      @PathVariable Long userId, @AuthenticationPrincipal CustomUserDetails principal) {
+    Authz.requireSelf(userId, principal); // "avaliações que eu fiz": só as minhas
     return ratingService.getByEvaluator(userId);
   }
 
@@ -99,8 +108,11 @@ public class RatingController {
       summary = "Usuario preenche avaliação",
       description = "Em teoria, o user nunca atualiza a avaliação")
   @PutMapping("/{id}")
-  public ResponseEntity<Void> finish(@PathVariable Long id, @RequestBody FinishRatingDTO request) {
-    ratingService.finish(id, request);
+  public ResponseEntity<Void> finish(
+      @PathVariable Long id,
+      @RequestBody FinishRatingDTO request,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    ratingService.finishForUser(id, principal.getUser().getId(), request);
     return ResponseEntity.ok().build();
   }
 }

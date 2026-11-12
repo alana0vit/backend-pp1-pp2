@@ -83,6 +83,16 @@ public class DemandService {
     return demand;
   }
 
+  /** Demanda só para o profissional escolhido (aceitar/recusar/finalizar). Outros: 404. */
+  public Demand getByIdForProfessional(@NonNull Long id, Long userId) {
+    Demand demand = getById(id);
+    User professional = demand.getProfessionalId();
+    if (userId == null || professional == null || !userId.equals(professional.getId())) {
+      throw new NoSuchElementException("Demanda não encontrada com ID: " + id);
+    }
+    return demand;
+  }
+
   /**
    * Valida, ANTES do upload para o R2, se o dono pode acrescentar {@code quantidade} fotos: só em
    * demanda ABERTA e respeitando o teto de {@link #MAX_IMAGES}.

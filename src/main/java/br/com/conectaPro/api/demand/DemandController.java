@@ -13,6 +13,7 @@ import br.com.conectaPro.model.user.AddressUser;
 import br.com.conectaPro.model.user.User;
 import br.com.conectaPro.model.user.UserService;
 import br.com.conectaPro.security.CustomUserDetails;
+import br.com.conectaPro.util.Authz;
 import br.com.conectaPro.util.Util;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -56,7 +57,11 @@ public class DemandController {
   @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
   public ResponseEntity<?> save(
       @Valid @ModelAttribute DemandRequest request,
-      @RequestParam(value = "imagens", required = false) List<MultipartFile> imagens) {
+      @RequestParam(value = "imagens", required = false) List<MultipartFile> imagens,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+
+    // o cliente da demanda é sempre o usuário logado (não dá para criar em nome de outro)
+    Authz.requireSelf(request.getClientId(), principal);
 
     try {
       User client = userService.getById(request.getClientId());
@@ -159,9 +164,12 @@ public class DemandController {
   @Operation(summary = "Permite atualizar o profissional após a demanda ser rejeitada")
   @PatchMapping("/{id}/reassign")
   public ResponseEntity<DemandResponseDTO> reassignProfessional(
-      @PathVariable @NonNull Long id, @RequestBody ReassignRequestDTO request) {
+      @PathVariable @NonNull Long id,
+      @RequestBody ReassignRequestDTO request,
+      @AuthenticationPrincipal CustomUserDetails principal) {
 
     try {
+      demandService.getByIdForOwner(id, principal.getUser().getId()); // só o cliente da demanda
       Demand updatedDemand = demandService.reassign(id, request.professionalId());
       return ResponseEntity.ok(DemandResponseDTO.fromEntity(updatedDemand));
     } catch (NoSuchElementException e) {
@@ -173,9 +181,13 @@ public class DemandController {
 
   @Operation(summary = "Profissional aceita a demanda e define o valor final do serviço")
   @PatchMapping("/{id}/accept")
-  public ResponseEntity<?> accept(@PathVariable Long id, @RequestBody AcceptDemandDTO request) {
+  public ResponseEntity<?> accept(
+      @PathVariable Long id,
+      @RequestBody AcceptDemandDTO request,
+      @AuthenticationPrincipal CustomUserDetails principal) {
 
     try {
+      demandService.getByIdForProfessional(id, principal.getUser().getId()); // só o profissional
       Demand updated = demandService.acceptWithValue(id, request.getFinalValue());
       return ResponseEntity.ok(DemandResponseDTO.fromEntity(updated));
     } catch (NoSuchElementException e) {
@@ -188,8 +200,12 @@ public class DemandController {
   @Operation(summary = "Atualiza o status da demanda")
   @PatchMapping("/{id}/status")
   public ResponseEntity<DemandResponseDTO> updateStatus(
-      @PathVariable Long id, @RequestBody StatusUpdateDTO request) {
+      @PathVariable Long id,
+      @RequestBody StatusUpdateDTO request,
+      @AuthenticationPrincipal CustomUserDetails principal) {
 
+    // recusar e finalizar são ações do profissional da demanda
+    demandService.getByIdForProfessional(id, principal.getUser().getId());
     Demand updated = demandService.updateStatus(id, request.getStatus());
     return ResponseEntity.ok(DemandResponseDTO.fromEntity(updated));
   }
