@@ -1,5 +1,6 @@
 package br.com.conectaPro.api.payment;
 
+import br.com.conectaPro.dto.PaymentResponseDTO;
 import br.com.conectaPro.model.demand.DemandService;
 import br.com.conectaPro.model.payment.Payment;
 import br.com.conectaPro.model.payment.PaymentService;
@@ -55,7 +56,7 @@ public class PaymentController {
 
       return ResponseEntity.ok(
           Map.of(
-              "payment", payment,
+              "payment", PaymentResponseDTO.fromEntity(payment),
               "checkoutUrl", checkoutUrl));
     } catch (NoSuchElementException e) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
@@ -76,7 +77,7 @@ public class PaymentController {
       } else if (payment.getSubscription() != null) {
         Authz.requireSelf(payment.getSubscription().getProfessional().getId(), principal);
       }
-      return ResponseEntity.ok(payment);
+      return ResponseEntity.ok(PaymentResponseDTO.fromEntity(payment));
     } catch (NoSuchElementException e) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
     }
@@ -173,7 +174,7 @@ public class PaymentController {
   @PostMapping("/{id}/aprovar")
   public ResponseEntity<?> aprovar(@PathVariable Long id) {
     try {
-      return ResponseEntity.ok(paymentService.aprovar(id));
+      return ResponseEntity.ok(PaymentResponseDTO.fromEntity(paymentService.aprovar(id)));
     } catch (NoSuchElementException e) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
     } catch (IllegalStateException e) {
@@ -185,7 +186,7 @@ public class PaymentController {
   @PostMapping("/{id}/recusar")
   public ResponseEntity<?> recusar(@PathVariable Long id) {
     try {
-      return ResponseEntity.ok(paymentService.recusar(id));
+      return ResponseEntity.ok(PaymentResponseDTO.fromEntity(paymentService.recusar(id)));
     } catch (NoSuchElementException e) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
     } catch (IllegalStateException e) {

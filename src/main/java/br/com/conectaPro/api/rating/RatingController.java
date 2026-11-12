@@ -1,6 +1,7 @@
 package br.com.conectaPro.api.rating;
 
 import br.com.conectaPro.dto.FinishRatingDTO;
+import br.com.conectaPro.dto.RatingResponseDTO;
 import br.com.conectaPro.model.demand.Demand;
 import br.com.conectaPro.model.demand.DemandService;
 import br.com.conectaPro.model.rating.EvaluateStatus;
@@ -64,7 +65,9 @@ public class RatingController {
       ratingNew.setStatus(EvaluateStatus.PENDENTE);
 
       Rating rating = ratingService.save(ratingNew);
-      return new ResponseEntity<>(rating, HttpStatus.CREATED);
+      return new ResponseEntity<>(
+          RatingResponseDTO.fromEntity(rating, principal.getUser().getId(), true),
+          HttpStatus.CREATED);
     } catch (NoSuchElementException e) {
       return ResponseEntity.status(HttpStatus.BAD_REQUEST)
           .body("Um dos IDs informados (Avaliador, Avaliado ou demanda) não existe.");
@@ -75,33 +78,47 @@ public class RatingController {
 
   @Operation(summary = "Lista todas as avaliações de um usuario")
   @GetMapping("/user/{userId}")
-  public List<Rating> getByUser(@PathVariable Long userId) {
-    return ratingService.getByUser(userId);
+  public List<RatingResponseDTO> getByUser(
+      @PathVariable Long userId, @AuthenticationPrincipal CustomUserDetails principal) {
+    Long viewerId = Authz.userId(principal);
+    // vitrine pública do profissional: só avaliações concluídas, sem dados do avaliador anônimo
+    return ratingService.getByUser(userId).stream()
+        .filter(r -> r.getStatus() == EvaluateStatus.COMPLETO)
+        .map(r -> RatingResponseDTO.fromEntity(r, viewerId, false))
+        .toList();
   }
 
   @Operation(summary = "Lista todas as avaliações feitas por um usuario")
   @GetMapping("/user/{userId}/evaluator")
-  public List<Rating> getByEvaluator(
+  public List<RatingResponseDTO> getByEvaluator(
       @PathVariable Long userId, @AuthenticationPrincipal CustomUserDetails principal) {
     Authz.requireSelf(userId, principal); // "avaliações que eu fiz": só as minhas
-    return ratingService.getByEvaluator(userId);
+    return ratingService.getByEvaluator(userId).stream()
+        .map(r -> RatingResponseDTO.fromEntity(r, userId, true))
+        .toList();
   }
 
   @Operation(summary = "Lista uma avaliação especifica de usuario")
   @GetMapping("/user/{userId}/rating/{ratingId}")
-  public Rating getUserRating(@PathVariable Long userId, @PathVariable Long ratingId) {
-    return ratingService.getUserRating(userId, ratingId);
+  public RatingResponseDTO getUserRating(
+      @PathVariable Long userId,
+      @PathVariable Long ratingId,
+      @AuthenticationPrincipal CustomUserDetails principal) {
+    return RatingResponseDTO.fromEntity(
+        ratingService.getUserRating(userId, ratingId), Authz.userId(principal), false);
   }
 
   @Operation(
       summary = "Anexa fotos à avaliação (só o autor, até 3 fotos de 5 MB)",
       description = "multipart/form-data com o campo 'imagens' (pode repetir).")
   @PostMapping(value = "/{id}/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-  public ResponseEntity<Rating> addImages(
+  public ResponseEntity<RatingResponseDTO> addImages(
       @PathVariable Long id,
       @RequestParam("imagens") List<MultipartFile> imagens,
       @AuthenticationPrincipal CustomUserDetails principal) {
-    return ResponseEntity.ok(ratingService.addImages(id, principal.getUser().getId(), imagens));
+    Long userId = principal.getUser().getId();
+    return ResponseEntity.ok(
+        RatingResponseDTO.fromEntity(ratingService.addImages(id, userId, imagens), userId, true));
   }
 
   @Operation(
