@@ -41,6 +41,8 @@ public class SecurityConfig {
                     .permitAll()
                     .requestMatchers("/api/user")
                     .permitAll() // POST criar usuário
+                    .requestMatchers("/ws/**")
+                    .permitAll() // handshake do WebSocket; o JWT é validado no frame STOMP CONNECT
                     .requestMatchers(HttpMethod.GET, "/api/category", "/api/category/**")
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/subscriptions/plans")
