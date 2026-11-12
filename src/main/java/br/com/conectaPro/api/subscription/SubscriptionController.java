@@ -7,12 +7,14 @@ import br.com.conectaPro.model.subscription.SubscriptionPlan;
 import br.com.conectaPro.model.subscription.SubscriptionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import br.com.conectaPro.security.CustomUserDetails;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -64,10 +66,14 @@ public class SubscriptionController {
 
   @Operation(
       summary = "Plano atual do profissional",
-      description =
-          "200 com {subscriptionId, planId, planName, status, startedAt, expiresAt} ou 204.")
+      description = "200 com {subscriptionId, planId, planName, status, startedAt, expiresAt} ou 204.")
   @GetMapping("/professional/{professionalId}/current")
-  public ResponseEntity<?> planoAtual(@PathVariable Long professionalId) {
+  public ResponseEntity<?> planoAtual(
+      @PathVariable Long professionalId, @AuthenticationPrincipal CustomUserDetails principal) {
+    // Detalhes da assinatura (id, datas) são só do próprio profissional.
+    if (!professionalId.equals(principal.getUser().getId())) {
+      return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+    }
     return subscriptionService
         .obterAssinaturaAtiva(professionalId)
         .<ResponseEntity<?>>map(
@@ -85,9 +91,11 @@ public class SubscriptionController {
 
   @Operation(summary = "Cancela uma assinatura ativa")
   @PostMapping("/{subscriptionId}/cancelar")
-  public ResponseEntity<?> cancelar(@PathVariable Long subscriptionId) {
+  public ResponseEntity<?> cancelar(
+      @PathVariable Long subscriptionId, @AuthenticationPrincipal CustomUserDetails principal) {
     try {
-      return ResponseEntity.ok(subscriptionService.cancelar(subscriptionId));
+      return ResponseEntity.ok(
+          subscriptionService.cancelar(subscriptionId, principal.getUser().getId()));
     } catch (NoSuchElementException e) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
     } catch (IllegalStateException e) {

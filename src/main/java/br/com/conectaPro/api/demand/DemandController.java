@@ -117,29 +117,29 @@ public class DemandController {
   public ResponseEntity<Void> update(
       @PathVariable Long id,
       @ModelAttribute DemandRequest request,
-      @RequestParam(value = "imagens", required = false) List<MultipartFile> imagens) {
+      @RequestParam(value = "imagens", required = false) List<MultipartFile> imagens,
+      @AuthenticationPrincipal CustomUserDetails principal) {
 
+    Long userId = principal.getUser().getId();
     Demand demand = request.build();
 
-    if (imagens != null && !imagens.isEmpty()) {
-      List<String> urls = new ArrayList<>();
+    // Novas fotos são SOMADAS às existentes (nada é apagado do R2 por aqui; para remover use
+    // DELETE /{id}/images/{nome}). Valida dono/status/teto antes de enviar qualquer arquivo.
+    List<String> novasUrls = new ArrayList<>();
+    if (imagens != null) {
+      long enviadas = imagens.stream().filter(i -> i != null && !i.isEmpty()).count();
+      demandService.assertCanAddImages(id, userId, (int) enviadas);
       for (MultipartFile imagem : imagens) {
         if (imagem != null && !imagem.isEmpty()) {
           String nomeArquivo = Util.fazerUploadImagem(imagem);
           if (nomeArquivo == null) {
             throw new RuntimeException("Erro ao salvar imagem: " + imagem.getOriginalFilename());
           }
-          urls.add(nomeArquivo);
+          novasUrls.add(nomeArquivo);
         }
       }
-      demand.setImgUrl(urls);
-
-      Demand demandAtual = demandService.getById(id);
-      if (demandAtual.getImgUrl() != null) {
-        for (String nomeAntigo : demandAtual.getImgUrl()) {
-          Util.apagarImagem(nomeAntigo);
-        }
-      }
+    } else {
+      demandService.getByIdForOwner(id, userId); // 404 se não for o dono
     }
 
     if (request.getCategoryId() != null) {
@@ -152,7 +152,7 @@ public class DemandController {
       demand.setAddressId(userService.getAddressById(request.getAddressId()));
     }
 
-    demandService.update(id, demand);
+    demandService.updateForOwner(id, userId, demand, novasUrls);
     return ResponseEntity.ok().build();
   }
 
@@ -196,20 +196,27 @@ public class DemandController {
 
   @Operation(summary = "Remove uma imagem especifica de uma demanda")
   @DeleteMapping("/{id}/images/{nomeArquivo}")
-  public ResponseEntity<?> deleteImage(@PathVariable Long id, @PathVariable String nomeArquivo) {
+  public ResponseEntity<?> deleteImage(
+      @PathVariable Long id,
+      @PathVariable String nomeArquivo,
+      @AuthenticationPrincipal CustomUserDetails principal) {
 
     try {
-      Demand updated = demandService.removeImage(id, nomeArquivo);
+      Demand updated =
+          demandService.removeImageForOwner(id, principal.getUser().getId(), nomeArquivo);
       return ResponseEntity.ok(DemandResponseDTO.fromEntity(updated));
     } catch (NoSuchElementException e) {
       return ResponseEntity.status(HttpStatus.NOT_FOUND).body(e.getMessage());
+    } catch (IllegalStateException e) {
+      return ResponseEntity.status(HttpStatus.CONFLICT).body(e.getMessage());
     }
   }
 
   @Operation(summary = "Deleta uma demanda")
   @DeleteMapping("/{id}")
-  public ResponseEntity<Void> delete(@PathVariable @NonNull Long id) {
-    demandService.delete(id);
+  public ResponseEntity<Void> delete(
+      @PathVariable @NonNull Long id, @AuthenticationPrincipal CustomUserDetails principal) {
+    demandService.deleteForOwner(id, principal.getUser().getId());
     return ResponseEntity.ok().build();
   }
 }

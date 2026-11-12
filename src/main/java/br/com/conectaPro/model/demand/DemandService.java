@@ -6,6 +6,7 @@ import br.com.conectaPro.security.EmailService;
 import br.com.conectaPro.util.Util;
 import jakarta.transaction.Transactional;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -64,6 +65,75 @@ public class DemandService {
     User professional = demand.getProfessionalId();
     return (client != null && userId.equals(client.getId()))
         || (professional != null && userId.equals(professional.getId()));
+  }
+
+  /** Máximo de fotos acumuladas por demanda (as novas fotos são somadas às existentes). */
+  public static final int MAX_IMAGES = 5;
+
+  /**
+   * Demanda só para o dono (cliente que a criou). Para quem não é o dono, responde "não
+   * encontrada" (404), como o getByIdForUser, sem revelar que o recurso existe.
+   */
+  public Demand getByIdForOwner(@NonNull Long id, Long userId) {
+    Demand demand = getById(id);
+    User client = demand.getClientId();
+    if (userId == null || client == null || !userId.equals(client.getId())) {
+      throw new NoSuchElementException("Demanda não encontrada com ID: " + id);
+    }
+    return demand;
+  }
+
+  /**
+   * Valida, ANTES do upload para o R2, se o dono pode acrescentar {@code quantidade} fotos: só em
+   * demanda ABERTA e respeitando o teto de {@link #MAX_IMAGES}.
+   */
+  public void assertCanAddImages(@NonNull Long id, Long userId, int quantidade) {
+    Demand demand = getByIdForOwner(id, userId);
+    if (demand.getDemandStatus() != DemandStatus.ABERTO) {
+      throw new IllegalStateException("Não é permitido editar um serviço aceito ou finalizado!");
+    }
+    int atuais = demand.getImgUrl() == null ? 0 : demand.getImgUrl().size();
+    if (atuais + quantidade > MAX_IMAGES) {
+      throw new IllegalArgumentException(
+          "Limite de " + MAX_IMAGES + " fotos por demanda (já existem " + atuais + ").");
+    }
+  }
+
+  /** PATCH do dono: as novas fotos são SOMADAS às existentes (nada é apagado do R2). */
+  @Transactional
+  public void updateForOwner(
+      @NonNull Long id, Long userId, Demand changed, List<String> novasImagens) {
+    Demand demand = getByIdForOwner(id, userId);
+
+    if (novasImagens != null && !novasImagens.isEmpty()) {
+      List<String> acumuladas =
+          demand.getImgUrl() == null ? new ArrayList<>() : new ArrayList<>(demand.getImgUrl());
+      acumuladas.addAll(novasImagens);
+      if (acumuladas.size() > MAX_IMAGES) {
+        throw new IllegalArgumentException("Limite de " + MAX_IMAGES + " fotos por demanda.");
+      }
+      changed.setImgUrl(acumuladas);
+    } else {
+      changed.setImgUrl(null); // sem fotos novas: não mexe nas existentes
+    }
+    update(id, changed);
+  }
+
+  /** Remove uma foto: só o dono e só enquanto a demanda está ABERTA (depois é evidência). */
+  @Transactional
+  public Demand removeImageForOwner(@NonNull Long id, Long userId, @NonNull String nomeArquivo) {
+    Demand demand = getByIdForOwner(id, userId);
+    if (demand.getDemandStatus() != DemandStatus.ABERTO) {
+      throw new IllegalStateException(
+          "Não é possível remover fotos de um serviço aceito ou finalizado.");
+    }
+    return removeImage(id, nomeArquivo);
+  }
+
+  @Transactional
+  public void deleteForOwner(@NonNull Long id, Long userId) {
+    getByIdForOwner(id, userId);
+    delete(id);
   }
 
   public Demand getById(@NonNull Long id) {

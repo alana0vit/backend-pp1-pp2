@@ -53,11 +53,8 @@ public class SubscriptionService {
         .ifPresent(
             ativa -> {
               throw new IllegalStateException(
-                  "Você já possui o plano "
-                      + plan.getName()
-                      + " ativo até "
-                      + ativa.getExpiresAt().toLocalDate()
-                      + ".");
+                  "Você já possui o plano " + plan.getName() + " ativo até "
+                      + ativa.getExpiresAt().toLocalDate() + ".");
             });
 
     Subscription subscription =
@@ -95,6 +92,17 @@ public class SubscriptionService {
     LocalDateTime agora = LocalDateTime.now();
     SubscriptionPlan plan = subscription.getPlan();
 
+    // Troca de plano: encerra a(s) assinatura(s) ATIVA(s) anterior(es), para o profissional nunca
+    // ficar com duas vigentes (a taxa e o selo passam a ser os do plano novo).
+    for (Subscription anterior :
+        repository.findByProfessionalIdAndStatus(
+            subscription.getProfessional().getId(), SubscriptionStatus.ATIVA)) {
+      if (!anterior.getId().equals(subscription.getId())) {
+        anterior.setStatus(SubscriptionStatus.CANCELADA);
+        repository.save(anterior);
+      }
+    }
+
     subscription.setStatus(SubscriptionStatus.ATIVA);
     subscription.setStartedAt(agora);
     subscription.setExpiresAt(agora.plusDays(plan.getDurationDays()));
@@ -117,11 +125,18 @@ public class SubscriptionService {
 
   /** Cancela uma assinatura ativa antes do fim do período (o profissional perde os benefícios). */
   @Transactional
-  public Subscription cancelar(@NonNull Long subscriptionId) {
+  public Subscription cancelar(@NonNull Long subscriptionId, Long requesterId) {
     Subscription subscription =
         repository
             .findById(subscriptionId)
             .orElseThrow(() -> new NoSuchElementException("Assinatura não encontrada."));
+
+    // Só o próprio profissional cancela; para os demais, "não encontrada" (404).
+    if (requesterId == null
+        || subscription.getProfessional() == null
+        || !requesterId.equals(subscription.getProfessional().getId())) {
+      throw new NoSuchElementException("Assinatura não encontrada.");
+    }
 
     if (subscription.getStatus() != SubscriptionStatus.ATIVA) {
       throw new IllegalStateException("Só é possível cancelar uma assinatura ATIVA.");
